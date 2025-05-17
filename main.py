@@ -10,6 +10,8 @@ import json
 from prompts import system_prompt
 import re
 import pandas as pd
+import base64
+from fastapi import Request
 
 # Load environment variables
 load_dotenv()
@@ -112,40 +114,38 @@ async def categorize_item(categorize_input:CategorizerInput):
         logging.error("Categorize API error", e)
 
 
-
-
 @app.post("/extract", response_model=DocumentResponse)
-async def extract_document_data(request: DocumentRequest):
+async def extract_document_data(request: Request):
     """
-    Extract structured data from a document image
-    
-    - Accepts an image URL
-    - Returns structured information including merchant, date, amount and more
+    Extract structured data from a document image sent as binary data (not multipart)
     """
     try:
+        # Read raw image bytes directly from request body
+        image_bytes = await request.body()
+
         # Set up OpenAI client
         client = OpenAI(
             api_key=OPENAI_API_KEY,
             base_url=BASE_URL,
         )
-        
-        # Define the extraction prompt
+
         prompt_text = """
         You are a smart invoice parser. Given the following receipt or invoice image, extract these fields and return the result in JSON format:
-        
+
         - name
         - date_of_transaction (format: YYYYMMDD)
         - description
         - item (description of item in receipt in sentences)
         - total_amount
-        
+
         If any field is missing, return null.
         """
-        
-        # Create completion request
-        logger.info(f"Processing document from URL: {request.image_url}")
+
+        # Encode image to base64
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
         completion = client.chat.completions.create(
-            model=request.model,
+            model='qwen-vl-max',
             messages=[
                 {
                     "role": "system",
@@ -156,42 +156,28 @@ async def extract_document_data(request: DocumentRequest):
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": str(request.image_url)
-                            }
+                            "image_url":  {"url": f"data:image/jpeg;base64,{image_b64}"}
                         }
                     ]
                 }
             ]
         )
-        
-        # Get the JSON response from the model
+
         response_content = completion.choices[0].message.content
-        logger.info(f"Raw response: {response_content}")
-        
-        # Try to parse the JSON response
-        import json
-        import re
-        
-        # If the response is wrapped in markdown code blocks, extract the JSON
+
+        # Extract JSON from response
         json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response_content)
         if json_match:
             extracted_json = json_match.group(1)
         else:
-            # Otherwise try to find anything that looks like a JSON object
             json_match = re.search(r'({[\s\S]*})', response_content)
             extracted_json = json_match.group(1) if json_match else response_content
-        
+
         try:
             extracted_data = json.loads(extracted_json)
         except json.JSONDecodeError:
-            logger.error(f"Failed to parse JSON: {extracted_json}")
-            # If JSON parsing fails, return the raw response
-            return DocumentResponse(
-                raw_response={"text": response_content}
-            )
-        
-        # Construct response with extracted data
+            return DocumentResponse(raw_response={"text": response_content})
+
         return DocumentResponse(
             name=extracted_data.get("name"),
             date=extracted_data.get("date_of_transaction"),
@@ -200,10 +186,11 @@ async def extract_document_data(request: DocumentRequest):
             total_amount=extracted_data.get("total_amount"),
             raw_response=extracted_data
         )
-        
+
     except Exception as e:
-        logger.error(f"Error processing document: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
+
 
 @app.get("/health")
 async def health_check():
