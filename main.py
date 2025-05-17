@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import json
 from prompts import system_prompt
 import re
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
@@ -87,6 +88,17 @@ async def categorize_item(categorize_input:CategorizerInput):
         if match:
             clean_json_str = match.group(0)
             final_content = json.loads(clean_json_str)
+
+        # save to csv
+        out_data = {
+            "date":categorize_input.date, 
+            "merchant":categorize.name, ## TODO
+            "category":final_content.get("category"), 
+            "amount":categorize_input.amount, 
+        }
+
+
+
 
         try:
             return CategorizerResponse(
