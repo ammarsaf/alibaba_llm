@@ -88,9 +88,6 @@ async def categorize_item(categorize_input:CategorizerInput):
             clean_json_str = match.group(0)
             final_content = json.loads(clean_json_str)
 
-        print("#"*100)
-        print(final_content, type(final_content))
-
         try:
             return CategorizerResponse(
                 product= final_content.get("product"),
