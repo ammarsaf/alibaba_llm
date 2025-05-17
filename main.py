@@ -6,6 +6,9 @@ from openai import OpenAI
 from typing import Optional, Dict, Any
 import logging
 from dotenv import load_dotenv
+import json
+from prompts import system_prompt
+import re
 
 # Load environment variables
 load_dotenv()
@@ -47,6 +50,60 @@ class DocumentResponse(BaseModel):
     total_amount: Optional[float] = None
     item: Optional[str] = None
     raw_response: Optional[Dict[str, Any]] = None
+
+class CategorizerResponse(BaseModel):
+    product: Optional[str] = None
+    category: Optional[str] = None
+
+class CategorizerInput(BaseModel):
+    name: Optional[str] = None
+    date: Optional[str] = None
+    description: Optional[str] = None
+    total_amount: Optional[float] = None
+    item: Optional[str] = None
+
+@app.post('/categorize', response_model=CategorizerResponse)
+async def categorize_item(categorize_input:CategorizerInput):
+    try:
+        client = OpenAI(
+            # If environment variables are not configured, replace the following line with: api_key="sk-xxx",
+            api_key=OPENAI_API_KEY, 
+            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        )
+        # print("#"*100)
+        # print("DEBUGGG: ", categorize_input.model_dump(mode='json'))
+        # print("#"*100)
+
+        completion = client.chat.completions.create(
+            model="qwen-plus", # This example uses qwen-plus. You can change the model name as needed. Model list: https://www.alibabacloud.com/help/en/model-studio/getting-started/models
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(categorize_input.model_dump(mode='json'))}],
+            )
+        content = completion.choices[0].message.content
+
+        
+        match = re.search(r'\{[\s\S]*?\}', content)
+        if match:
+            clean_json_str = match.group(0)
+            final_content = json.loads(clean_json_str)
+
+        print("#"*100)
+        print(final_content, type(final_content))
+
+        try:
+            return CategorizerResponse(
+                product= final_content.get("product"),
+                category= final_content.get("category")
+            )
+        except Exception as e:
+            print("ERROR: ", e)
+
+    except Exception as e:
+        logging.error("Categorize API error", e)
+
+
+
 
 @app.post("/extract", response_model=DocumentResponse)
 async def extract_document_data(request: DocumentRequest):
