@@ -53,6 +53,8 @@ class DocumentResponse(BaseModel):
     total_amount: Optional[float] = None
     item: Optional[str] = None
     raw_response: Optional[Dict[str, Any]] = None
+    product: Optional[str] = None
+    category: Optional[str] = None
 
 class CategorizerResponse(BaseModel):
     product: Optional[str] = None
@@ -142,7 +144,7 @@ async def extract_document_data(request: Request):
             base_url=BASE_URL,
         )
 
-        prompt_text = """
+        prompt_text = f"""
         You are a smart invoice parser. Given the following receipt or invoice image, extract these fields and return the result in JSON format:
 
         - name
@@ -150,6 +152,11 @@ async def extract_document_data(request: Request):
         - description
         - item (description of item in receipt in sentences)
         - total_amount
+        - product
+        - category 
+
+        Here is the details on how to categorize for category
+        {system_prompt}
 
         If any field is missing, return null.
         """
@@ -191,13 +198,39 @@ async def extract_document_data(request: Request):
         except json.JSONDecodeError:
             return DocumentResponse(raw_response={"text": response_content})
 
+
+        # update csv
+
+        out_data = {
+            "date":[extracted_data.get("date")], 
+            "merchant":[extracted_data.get("name")],
+            "category":[extracted_data.get("category")], 
+            "amount":[extracted_data.get('total_amount')], 
+        }
+
+        df_data = pd.DataFrame(out_data)
+
+        try:
+            df_output = pd.read_csv("categorize_output.csv")
+            df_new = pd.concat([df_output, df_data], ignore_index=True)
+            df_new.to_csv("categorize_output.csv", index=False)
+        except:
+            logging.error("CSV is not exist")
+            print("CSV does not exist")
+            print("Create csv...")
+            df_data.to_csv("categorize_output.csv", index=False)
+            print("categorize_output.csv is created!")
+
+
         return DocumentResponse(
             name=extracted_data.get("name"),
             date=extracted_data.get("date_of_transaction"),
             description=extracted_data.get("description"),
             item=extracted_data.get("item"),
             total_amount=extracted_data.get("total_amount"),
-            raw_response=extracted_data
+            raw_response=extracted_data, 
+            product=extracted_data.get("product"), 
+            category=extracted_data.get("category")
         )
 
     except Exception as e:
