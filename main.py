@@ -90,15 +90,28 @@ async def categorize_item(categorize_input:CategorizerInput):
         if match:
             clean_json_str = match.group(0)
             final_content = json.loads(clean_json_str)
-
+        
+        # print("#"*100)
+        # print(categorize_input.date, categorize_input.date.index)
         # save to csv
         out_data = {
-            "date":categorize_input.date, 
-            "merchant":categorize.name, ## TODO
-            "category":final_content.get("category"), 
-            "amount":categorize_input.amount, 
+            "date":[categorize_input.date], 
+            "merchant":[categorize_input.name], ## TODO
+            "category":[final_content.get("category")], 
+            "amount":[categorize_input.total_amount], 
         }
 
+        df_data = pd.DataFrame(out_data)
+
+        try:
+            df_output = pd.read_csv("categorize_output.csv")
+            df_new = pd.concat([df_output, df_data], ignore_index=True)
+            df_new.to_csv("categorize_output.csv", index=False)
+        except:
+            logging.error("CSV is not exist")
+            print("CSV does not exist")
+            print("Create csv...")
+            df_data.to_csv("categorize_output.csv", index=False)
 
 
 

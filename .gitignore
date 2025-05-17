@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 
 /venvHack
+categorize_output.csv
